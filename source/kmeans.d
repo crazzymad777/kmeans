@@ -8,17 +8,36 @@
  * + Neither the name of Yuri Moskov nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
  */
 
-import std.stdio, std.complex, std.array, std.typecons: Tuple, tuple;
+import std.json, std.stdio, std.complex, std.array, std.algorithm.iteration, std.random, std.typecons: Tuple, tuple;
 
+pragma(inline):
 auto getArg(T)(ref string[] args, int N, T defaultValue) pure @safe {
 	import std.conv;
 	return args.length > N ? to!T(args[N]) : defaultValue;
 };
 
-int main(string[] args) @safe {
-	auto filename = getArg!string(args, 1, "--random"), numClusters = getArg!int(args, 2, 5), numPoints = getArg!int(args, 3, 500);
+int main(string[] args) {
+	import std.file: readText;
 
-	seedAndRun!real(numClusters, numPoints);
+	auto filename = getArg!string(args, 1, "--random");
+
+	if (filename == "--random") {
+		seedAndRun!real(5, 500);
+	} else {
+		// Prepare random generator
+		auto rnd = Random(unpredictableSeed);
+
+		auto jsonRoot = filename.readText.parseJSON;
+		auto numClusters = jsonRoot["clusters"].integer;
+		auto points = jsonRoot["points"].array.map!(x => Complex!real(x[0].get!real, x[1].get!real)).array;
+
+		// Pick up random points
+		Complex!real[] clusters = points.randomShuffle(rnd)[0..numClusters];
+
+		pure_run(points, clusters);
+		JSONValue output = ["clusters": clusters.map!(x => [x.re, x.im]).array];
+		writeln(toJSON(output));
+	}
 	return 0;
 }
 
@@ -33,7 +52,6 @@ void seedAndRun(T)(int numClusters = 5, int numPoints = 500) @safe
 in (numClusters > 0)
 in (numPoints > 0)
 do {
-	import std.random;
 	// Prepare random generator
 	auto rnd = Random(unpredictableSeed);
 
@@ -50,6 +68,8 @@ do {
 
 	// Start K-means
 	pure_run(points, clusters);
+	JSONValue output = ["clusters": clusters.map!(x => [x.re, x.im]).array];
+	writeln(toJSON(output));
 }
 
 /***********************************
@@ -66,7 +86,7 @@ out (result) {
 	assert(result > 0);
 }
 do {
-	import std.algorithm.iteration, std.algorithm.searching, std.range, std.math: isNaN;
+	import std.algorithm.searching, std.range, std.math: isNaN;
 	int numInterations;
 	bool changed = false;
 
