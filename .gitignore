@@ -1,0 +1,16 @@
+.dub
+docs.json
+__dummy.html
+docs/
+/means
+kmeans
+means.so
+means.dylib
+means.dll
+means.a
+means.lib
+means-test-*
+*.exe
+*.o
+*.obj
+*.lst

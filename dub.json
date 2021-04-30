@@ -1,0 +1,18 @@
+{
+	"authors": [
+		"Yuri Moskov"
+	],
+	"copyright": "Copyright © 2021, Yuri Moskov",
+	"description": "A minimal D application.",
+	"license": "BSD-3-Clause-Clear",
+	"name": "means",
+	"configurations": [
+	    {
+		"name": "K-means",
+		"targetType": "executable",
+		"mainSourceFile": "source/kmeans.d",
+		"targetName": "kmeans"
+	    }
+	]
+}
+
