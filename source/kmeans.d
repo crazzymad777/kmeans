@@ -8,68 +8,57 @@
  * + Neither the name of Yuri Moskov nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
  */
 
-import std.json, std.stdio, std.complex, std.array, std.algorithm.iteration, std.random, std.typecons: Tuple, tuple;
+import std.stdio, std.complex, std.array, std.algorithm.iteration, std.random, std.typecons: Tuple, tuple;
 
-pragma(inline):
-auto getArg(T)(ref string[] args, int N, T defaultValue) pure @safe {
-	import std.conv;
-	return args.length > N ? to!T(args[N]) : defaultValue;
-}
+import configuration;
 
 int main(string[] args) {
-	import std.file: readText;
+	import std.json;
+	auto configuration = new Configuration(args);
 
-	auto filename = getArg!string(args, 1, "--random");
+	if (!configuration.helpWanted) {
+		assert(configuration.numClusters <= configuration.numPoints);
+		assert(configuration.numClusters > 0);
 
-	if (filename == "--random") {
-		seedAndRun!real(getArg!int(args, 3, 5), getArg!int(args, 2, 500));
-	} else {
 		// Prepare random generator
 		auto rnd = Random(unpredictableSeed);
 
-		auto jsonRoot = filename.readText.parseJSON;
-		auto numClusters = jsonRoot["clusters"].integer;
-		auto points = jsonRoot["points"].array.map!(x => Complex!real(x[0].get!real, x[1].get!real)).array;
+		Complex!real[] points, clusters;
+
+		if (configuration.isRandom) {
+			points.length = configuration.numPoints;
+			seed!real(points);
+		} else {
+			points = configuration.points;
+		}
 
 		// Pick up random points
-		Complex!real[] clusters = points.randomShuffle(rnd)[0..numClusters];
+		clusters = points.randomShuffle(rnd)[0..configuration.numClusters];
 
-		pure_run(points, clusters);
+		pure_run!real(points, clusters);
 		JSONValue output = ["clusters": clusters.map!(x => [x.re, x.im]).array];
-		writeln(toJSON(output));
+		auto outFile = stdout;
+		if (configuration.outfilename != null) {
+			outFile = File(configuration.outfilename, "wb");
+		}
+		outFile.writeln(toJSON(output));
 	}
 	return 0;
 }
 
 /***********************************
- * seedAndRun generate random points and start K-means clustering.
+ * seed generate random points
  * Params:
  *      numClusters =     number of clusters
  *      numPoints =     number of points
  */
 
-void seedAndRun(T)(int numClusters = 5, int numPoints = 500)
-in (numClusters > 0)
-in (numPoints > 0)
-do {
-	// Prepare random generator
-	auto rnd = Random(unpredictableSeed);
-
-	Complex!T[] points;
-	points.length = numPoints;
-
+void seed(T)(ref Complex!T[] points)
+{
 	// Generate random points
 	foreach(ref x; points) {
-		x = complex(uniform(T(-200), T(200), rnd), uniform(T(-200), T(200), rnd));
+		x = complex(uniform(T(-200), T(200)), uniform(T(-200), T(200)));
 	}
-
-	// Pick up random points
-	Complex!T[] clusters = points.randomShuffle(rnd)[0..numClusters];
-
-	// Start K-means
-	pure_run(points, clusters);
-	JSONValue output = ["clusters": clusters.map!(x => [x.re, x.im]).array];
-	writeln(toJSON(output));
 }
 
 pragma(inline):
