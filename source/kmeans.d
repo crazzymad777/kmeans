@@ -14,7 +14,7 @@ pragma(inline):
 auto getArg(T)(ref string[] args, int N, T defaultValue) pure @safe {
 	import std.conv;
 	return args.length > N ? to!T(args[N]) : defaultValue;
-};
+}
 
 int main(string[] args) {
 	import std.file: readText;
@@ -22,7 +22,7 @@ int main(string[] args) {
 	auto filename = getArg!string(args, 1, "--random");
 
 	if (filename == "--random") {
-		seedAndRun!real(5, 500);
+		seedAndRun!real(getArg!int(args, 3, 5), getArg!int(args, 2, 500));
 	} else {
 		// Prepare random generator
 		auto rnd = Random(unpredictableSeed);
@@ -48,7 +48,7 @@ int main(string[] args) {
  *      numPoints =     number of points
  */
 
-void seedAndRun(T)(int numClusters = 5, int numPoints = 500) @safe
+void seedAndRun(T)(int numClusters = 5, int numPoints = 500)
 in (numClusters > 0)
 in (numPoints > 0)
 do {
@@ -72,6 +72,22 @@ do {
 	writeln(toJSON(output));
 }
 
+pragma(inline):
+void kmean(T, Tuple)(ref Complex!T[] clusters, ref bool changed, Tuple t) pure
+{
+	import std.math: isNaN;
+
+	// Calculate cluster center
+	Complex!T meanInCluster = ((Complex!T[] a) pure => (a.sum()/a.length))(t[1].map!(a => a.point).array);
+	if (!isNaN(meanInCluster.re) && !isNaN(meanInCluster.im)) {
+		if (meanInCluster != clusters[t[0]]) {
+			// Move cluster center if new value doesn't equal old and isn't NaN.
+			clusters[t[0]] = meanInCluster;
+			changed = true;
+		}
+	}
+}
+
 /***********************************
  * pure_run K-Means clustering.
  * Params:
@@ -79,40 +95,27 @@ do {
  *      clusters =     array of clusters
  */
 
-int pure_run(T)(ref Complex!T[] points, ref Complex!T[] clusters) pure @safe
+int pure_run(T)(ref Complex!T[] points, ref Complex!T[] clusters) pure
 in (points.length > 0)
 in (clusters.length > 0)
 out (result) {
 	assert(result > 0);
 }
 do {
-	import std.algorithm.searching, std.range, std.math: isNaN;
+	import std.algorithm;
 	int numInterations;
 	bool changed = false;
 
-	long[] clusterOfPoint;
-	clusterOfPoint.length = points.length;
-
 	do {
+		// Obviously: Reset changed and increment numInterations
 		numInterations++;
-		changed = 0;
+		changed = false;
 
-		// Find cluster of point
-		points.enumerate.each!(tuple => clusterOfPoint[tuple.index] = clusters.map!(cluster => abs(tuple.value-cluster)).minIndex);
+		points.map!(point => tuple!("point", "clusterId")(point, clusters.map!(cluster => abs(point-cluster)).minIndex)) // Find cluster of each point
+	       .array.sort!"a.clusterId<b.clusterId".chunkBy!(a => a.clusterId) // group points by cluster they belong to
+		     .each!(r => kmean!T(clusters, changed, r)); // calculate each cluster center and track changes
 
-		foreach (c, cluster; clusters) {
-			// Find new cluster value
-			Complex!T meanInCluster = ((Complex!T[] a) pure => (a.sum()/a.length))(points.enumerate.filter!(a => clusterOfPoint[a.index] == c).map!"a.value".array);
-
-			// Set new value if it doesn't equal old and isn't NaN
-			if (!isNaN(meanInCluster.re) && !isNaN(meanInCluster.im)) {
-				if (meanInCluster != clusters[c]) {
-					clusters[c] = meanInCluster;
-					changed = true;
-				}
-			}
-		}
-	} while (changed);
+	} while (changed); // do while any of cluster center was moved during iteration. Cycle is finite.
 	return numInterations;
 }
 
