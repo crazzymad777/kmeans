@@ -8,7 +8,7 @@
  * + Neither the name of Yuri Moskov nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
  */
 
-import std.complex;
+import std.complex, IDataAdapter;
 
 pragma(inline):
 auto getArg(T)(ref string[] args, int N, T defaultValue) pure @safe {
@@ -21,7 +21,7 @@ public:
 	this(string[] args) {
 		import std.algorithm, std.array, std.json, std.getopt, std.stdio, std.file: readText;
 
-		auto helpInformation = getopt(args, "random|r", "generates random points", &m_isRandom, "clusters|c", "number of clusters (works only with --random)", &m_numClusters, "points|p", "number of points (works only with --random)", &m_numPoints, "input|i", "input filename (stdin if not specified)", &m_filename, "output|o", "output filename (stdout if not specified)", &m_outfilename, "adapter|d", "data adapter (JSON)", &m_dataAdapter);
+		auto helpInformation = getopt(args, "random|r", "generates random points", &m_isRandom, "clusters|c", "number of clusters (with --random & CSV)", &m_numClusters, "points|p", "number of points (works only with --random)", &m_numPoints, "input|i", "input filename (stdin if not specified)", &m_filename, "output|o", "output filename (stdout if not specified)", &m_outfilename, "adapter|d", "data adapter (JSON, CSV)", &m_dataAdapter, "input-adapter|id", "input data adapter (override common)", &m_inputDataAdapter, "output-adapter|od", "output data adapter (override common)", &m_outputDataAdapter);
 
 		m_helpWanted = helpInformation.helpWanted;
 
@@ -30,10 +30,25 @@ public:
 			defaultGetoptPrinter(args[0] ~ " [OPTIONS]", helpInformation.options);
 			m_isRandom = true;
 		} else {
+			if (m_dataAdapter == DataAdapterType.NotSpecified) {
+				m_dataAdapter = DataAdapterType.JSON;
+			}
+			if (m_inputDataAdapter == DataAdapterType.NotSpecified) {
+				m_inputDataAdapter = m_dataAdapter;
+			}
+			if (m_outputDataAdapter == DataAdapterType.NotSpecified) {
+				m_outputDataAdapter = m_dataAdapter;
+			}
+
 			if (!m_isRandom) {
-				auto jsonRoot = (m_filename != null ? m_filename.readText.parseJSON : stdin.byLineCopy().array().fold!((a, b) => a ~ b).parseJSON);
-				m_numClusters = jsonRoot["clusters"].integer;
-				m_points = jsonRoot["points"].array.map!(x => Complex!real(x[0].get!real, x[1].get!real)).array;
+				auto content = m_filename != null ? m_filename.readText : stdin.byLineCopy().array().fold!((a, b) => a ~ b);
+				auto dataInterface = createIDataAdapter(getDataAdapterType(m_inputDataAdapter), content);
+
+				if (!dataInterface.onlyPoints()) {
+					m_numClusters = dataInterface.readProperty("clusters");
+				}
+
+				m_points = dataInterface.readPoints();
 			}
 		}
 	}
@@ -43,15 +58,24 @@ public:
 	@property isRandom() { return m_isRandom; }
 	@property helpWanted() { return m_helpWanted; }
 	@property outfilename() { return m_outfilename; }
+	@property outDataAdapter() { return getDataAdapterType(m_outputDataAdapter); }
 private:
+	string getDataAdapterType(DataAdapterType t) {
+		if (t == DataAdapterType.JSON) return "JSON";
+		if (t == DataAdapterType.CSV) return "CSV";
+		return "JSON";
+	}
+
 	long m_numClusters = 5;
 	long m_numPoints = 500;
 	void[] m_points;
 	string m_precision;
 	string m_filename = null;
 	string m_outfilename = null;
-	enum DataAdapterType {JSON};
-	DataAdapterType m_dataAdapter;
+	enum DataAdapterType {NotSpecified, JSON, CSV};
+	DataAdapterType m_dataAdapter = DataAdapterType.NotSpecified;
+	DataAdapterType m_inputDataAdapter = DataAdapterType.NotSpecified;
+	DataAdapterType m_outputDataAdapter = DataAdapterType.NotSpecified;
 	bool m_isRandom;
 	bool m_helpWanted;
 }

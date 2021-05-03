@@ -13,7 +13,7 @@ import std.stdio, std.complex, std.array, std.algorithm.iteration, std.random, s
 import configuration;
 
 int main(string[] args) {
-	import std.json;
+	import std.json, IDataAdapter;
 	auto configuration = new Configuration(args);
 
 	if (!configuration.helpWanted) {
@@ -36,12 +36,11 @@ int main(string[] args) {
 		clusters = points.randomShuffle(rnd)[0..configuration.numClusters];
 
 		pure_run!real(points, clusters);
-		JSONValue output = ["clusters": clusters.map!(x => [x.re, x.im]).array];
 		auto outFile = stdout;
 		if (configuration.outfilename != null) {
 			outFile = File(configuration.outfilename, "wb");
 		}
-		outFile.writeln(toJSON(output));
+		createIDataAdapter(configuration.outDataAdapter, "").writeClusters(outFile, clusters);
 	}
 	return 0;
 }
